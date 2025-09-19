@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Planificador de Horarios</title>
+  <style>
+    body { font-family: sans-serif; background: #f8fafc; margin: 0; padding: 0; }
+    .container { display: grid; grid-template-columns: 1fr 2fr; gap: 1rem; max-width: 1200px; margin: auto; padding: 1rem; }
+    aside, main { background: white; border-radius: 8px; padding: 1rem; box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
+    h2, h3, h4 { margin-top: 0.5rem; }
+    input, button, select { padding: 0.4rem; margin-top: 0.3rem; border: 1px solid #ccc; border-radius: 4px; }
+    button { cursor: pointer; }
+    ul { list-style: none; padding: 0; }
+    li { margin-bottom: 0.5rem; }
+    .schedule { display: grid; grid-template-columns: 80px 1fr; margin-top: 1rem; height: 960px; overflow-y: auto; border: 1px solid #ddd; border-radius: 6px; }
+    .hours { border-right: 1px solid #ddd; }
+    .hours div { height: 40px; font-size: 0.8rem; color: #666; }
+    .timeline { position: relative; background: #fff; }
+    .line { position: absolute; left: 0; right: 0; height: 1px; background: #eee; }
+    .block { position: absolute; left: 4px; right: 4px; border-radius: 4px; padding: 2px 4px; font-size: 0.8rem; overflow: hidden; box-sizing: border-box; }
+    .routine { background: #fef9c3; border: 1px dashed #eab308; }
+    .activity { background: #dbeafe; border: 1px solid #3b82f6; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <aside>
+      <h2>Fecha de entrega</h2>
+      <input type="datetime-local" id="dueDate" />
+      <div id="dueDisplay" style="margin-top:0.5rem; font-size:0.9rem; color:#92400e;"></div>
+
+      <hr />
+
+      <h3>Añadir rutina</h3>
+      <input type="text" id="routineName" placeholder="Nombre" />
+      <div>
+        <input type="time" id="routineStart" value="09:00" />
+        <input type="time" id="routineEnd" value="10:00" />
+      </div>
+      <div id="days"></div>
+      <button onclick="addRoutine()">Agregar rutina</button>
+      <h4>Rutinas</h4>
+      <ul id="routineList"></ul>
+
+      <hr />
+
+      <h3>Añadir actividad</h3>
+      <input type="text" id="activityName" placeholder="Nombre de actividad" />
+      <input type="date" id="activityDate" />
+      <div>
+        <input type="time" id="activityStart" value="11:00" />
+        <input type="time" id="activityEnd" value="12:00" />
+      </div>
+      <button onclick="addActivity()">Agregar actividad</button>
+      <h4>Actividades</h4>
+      <ul id="activityList"></ul>
+    </aside>
+
+    <main>
+      <h2>Horario</h2>
+      <input type="date" id="selectedDate" />
+      <div class="schedule">
+        <div class="hours" id="hours"></div>
+        <div class="timeline" id="timeline"></div>
+      </div>
+      <h3>Actividades del día</h3>
+      <ul id="dayList"></ul>
+    </main>
+  </div>
+
+  <script>
+    const weekdays = ["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"];
+    let routines = [];
+    let activities = [];
+
+    const dueDateInput = document.getElementById('dueDate');
+    const dueDisplay = document.getElementById('dueDisplay');
+    dueDateInput.addEventListener('change', () => {
+      if(dueDateInput.value) {
+        dueDisplay.textContent = "Entrega: " + new Date(dueDateInput.value).toLocaleString();
+      }
+    });
+
+    // Render checkboxes for days
+    const daysDiv = document.getElementById('days');
+    weekdays.forEach((d,i)=>{
+      const label = document.createElement('label');
+      label.style.fontSize="0.8rem";
+      label.style.marginRight = "4px";
+      const chk = document.createElement('input');
+      chk.type='checkbox';
+      chk.value=i;
+      if(i>0 && i<6) chk.checked=true; // default L-V
+      label.appendChild(chk);
+      label.appendChild(document.createTextNode(d));
+      daysDiv.appendChild(label);
+    });
+
+    function addRoutine(){
+      const name=document.getElementById('routineName').value;
+      const start=document.getElementById('routineStart').value;
+      const end=document.getElementById('routineEnd').value;
+      const days=[...daysDiv.querySelectorAll('input:checked')].map(c=>parseInt(c.value));
+      if(!name) return;
+      routines.push({id:Date.now(),name,start,end,days});
+      renderRoutines();
+      document.getElementById('routineName').value="";
+    }
+
+    function renderRoutines(){
+      const ul=document.getElementById('routineList');
+      ul.innerHTML="";
+      routines.forEach(r=>{
+        const li=document.createElement('li');
+        li.textContent=`${r.name} (${r.start}-${r.end})`;
+        const btn=document.createElement('button');
+        btn.textContent="Eliminar";
+        btn.onclick=()=>{routines=routines.filter(x=>x.id!==r.id);renderRoutines();renderSchedule();};
+        li.appendChild(btn);
+        ul.appendChild(li);
+      });
+      renderSchedule();
+    }
+
+    function addActivity(){
+      const name=document.getElementById('activityName').value;
+      const date=document.getElementById('activityDate').value;
+      const start=document.getElementById('activityStart').value;
+      const end=document.getElementById('activityEnd').value;
+      if(!name||!date) return;
+      activities.push({id:Date.now(),name,date,start,end});
+      renderActivities();
+      document.getElementById('activityName').value="";
+    }
+
+    function renderActivities(){
+      const ul=document.getElementById('activityList');
+      ul.innerHTML="";
+      activities.forEach(a=>{
+        const li=document.createElement('li');
+        li.textContent=`${a.name} ${a.date} (${a.start}-${a.end})`;
+        const btn=document.createElement('button');
+        btn.textContent="Eliminar";
+        btn.onclick=()=>{activities=activities.filter(x=>x.id!==a.id);renderActivities();renderSchedule();};
+        li.appendChild(btn);
+        ul.appendChild(li);
+      });
+      renderSchedule();
+    }
+
+    // Hours grid
+    const hoursDiv=document.getElementById('hours');
+    const hours=[];
+    for(let h=0;h<24;h++){hours.push(h);} // 0 a 23
+    hours.forEach(h=>{
+      const div=document.createElement('div');
+      div.textContent=(h<10?'0':'')+h+":00";
+      hoursDiv.appendChild(div);
+    });
+
+    const selectedDateInput=document.getElementById('selectedDate');
+    selectedDateInput.value=new Date().toISOString().slice(0,10);
+    selectedDateInput.addEventListener('change',renderSchedule);
+
+    function renderSchedule(){
+      const date=selectedDateInput.value;
+      const wd=new Date(date).getDay();
+      const timeline=document.getElementById('timeline');
+      timeline.innerHTML="";
+      const pxPerHour=40;
+      function pos(t){const [hh,mm]=t.split(':').map(Number);return (hh+mm/60)*pxPerHour;}
+
+      // grid lines
+      hours.forEach((h,i)=>{
+        const l=document.createElement('div');
+        l.className='line';
+        l.style.top=(i*pxPerHour)+'px';
+        timeline.appendChild(l);
+      });
+
+      // routines
+      routines.filter(r=>r.days.includes(wd)).forEach(r=>{
+        const div=document.createElement('div');
+        div.className='block routine';
+        div.style.top=pos(r.start)+'px';
+        div.style.height=Math.max(20,(pos(r.end)-pos(r.start)))+'px';
+        div.textContent=r.name+` (${r.start}-${r.end})`;
+        timeline.appendChild(div);
+      });
+      // activities
+      activities.filter(a=>a.date===date).forEach(a=>{
+        const div=document.createElement('div');
+        div.className='block activity';
+        div.style.top=pos(a.start)+'px';
+        div.style.height=Math.max(20,(pos(a.end)-pos(a.start)))+'px';
+        div.textContent=a.name+` (${a.start}-${a.end})`;
+        timeline.appendChild(div);
+      });
+
+      // list view
+      const dayList=document.getElementById('dayList');
+      dayList.innerHTML="";
+      routines.filter(r=>r.days.includes(wd)).forEach(r=>{
+        const li=document.createElement('li');
+        li.textContent=`Rutina: ${r.name} (${r.start}-${r.end})`;
+        dayList.appendChild(li);
+      });
+      activities.filter(a=>a.date===date).forEach(a=>{
+        const li=document.createElement('li');
+        li.textContent=`${a.name} (${a.start}-${a.end})`;
+        dayList.appendChild(li);
+      });
+    }
+
+    renderSchedule();
+  </script>
+</body>
+</html>
+
